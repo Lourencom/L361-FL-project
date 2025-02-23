@@ -22,7 +22,7 @@ from flwr.client.client import Client
 import matplotlib.pyplot as plt
 
 
-from ..flbs.common.client_utils import (
+from .client_utils import (
     Net,
     load_femnist_dataset,
     get_network_generator_cnn as get_network_generator,
