@@ -21,17 +21,20 @@ from flwr.client.client import Client
 
 import matplotlib.pyplot as plt
 
-
-from common.client_utils import (
+from .common.client import FlowerClient
+from .common.client_utils import (
     Net,
     load_femnist_dataset,
     get_network_generator_cnn as get_network_generator,
     train_femnist,
     test_femnist,
     save_history,
+    set_model_parameters,
+    get_model_parameters,
+    get_device,
 )
-from utils import get_git_root
-from estimate import (
+from .utils import get_git_root
+from .estimate import (
     collect_gradients,
     compute_noise_scale_from_gradients,
 )
@@ -51,16 +54,6 @@ def set_all_seeds():
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
-
-def get_device() -> str:
-    """Get the device (cuda, mps, cpu)."""
-    device = "cpu"
-    if torch.cuda.is_available():
-        device = "cuda"
-    elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
-        device = "mps"
-    return device
-
 def get_paths():
     home_dir = Path(get_git_root())
     dataset_dir: Path = home_dir / "femnist"
@@ -70,6 +63,7 @@ def get_paths():
     federated_partition: Path = dataset_dir / "client_data_mappings" / "fed_natural"
     
     paths = {
+        "home_dir": home_dir,
         "dataset_dir": dataset_dir,
         "data_dir": data_dir,
         "centralized_partition": centralized_partition,
@@ -84,20 +78,6 @@ def decompress_dataset(paths: dict):
         with tarfile.open(paths["dataset_dir"] / "femnist.tar.gz", "r:gz") as tar:
             tar.extractall(path=paths["dataset_dir"])
         log(INFO, "Dataset extracted in %s", paths["dataset_dir"])
-
-
-def set_model_parameters(net: Module, parameters: NDArrays) -> Module:
-    """Put a set of parameters into the model object."""
-    weights = parameters
-    params_dict = zip(net.state_dict().keys(), weights, strict=False)
-    state_dict = OrderedDict({k: torch.from_numpy(np.copy(v)) for k, v in params_dict})
-    net.load_state_dict(state_dict, strict=True)
-    return net
-
-
-def get_model_parameters(net: Module) -> NDArrays:
-    """Get the current model parameters as NDArrays."""
-    return [val.cpu().numpy() for _, val in net.state_dict().items()]
 
 
 class FlowerRayClient(flwr.client.NumPyClient):
@@ -275,3 +255,107 @@ def get_flower_client_generator(
         )
 
     return client_fn
+
+
+def sample_random_clients(
+    total_clients: int,
+    filter_less: int,
+    cid_client_generator: Callable[[str], FlowerClient],
+    seed: int | None = Seeds.DEFAULT,
+) -> Sequence[int]:
+    """Sample randomly clients.
+
+    A filter on the client train set size is performed.
+
+    Parameters
+    ----------
+        total_clients (int): total number of clients to sample.
+        filter_less (int): max number of train samples for which the client is
+            **discarded**.
+    """
+    if seed is not None:
+        random.seed(seed)
+    list_of_ids = []
+    while len(list_of_ids) < total_clients:
+        current_id = random.randint(0, 3229)
+        if (
+            cid_client_generator(str(current_id)).get_train_set_size()
+            > filter_less
+        ):
+            list_of_ids.append(current_id)
+    return list_of_ids
+
+
+def get_federated_evaluation_function(
+    batch_size: int,
+    num_workers: int,
+    model_generator: Callable[[], Module],
+    criterion: Module,
+    max_batches: int,
+) -> Callable[[int, NDArrays, dict[str, Any]], tuple[float, dict[str, Scalar]]]:
+    """Wrap the external federated evaluation function.
+
+    It provides the external federated evaluation function with some
+    parameters for the dataloader, the model generator function, and
+    the criterion used in the evaluation.
+
+    Parameters
+    ----------
+        batch_size (int): batch size of the test set to use.
+        num_workers (int): correspond to `num_workers` param in the Dataloader object.
+        model_generator (Callable[[], Module]):  model generator function.
+        criterion (Module): PyTorch Module containing the criterion for evaluating the
+        model.
+
+    Returns
+    ----------
+        External federated evaluation function.
+    """
+
+    def federated_evaluation_function(
+        server_round: int,
+        parameters: NDArrays,
+        fed_eval_config: dict[
+            str, Any
+        ],  # mandatory argument, even if it's not being used
+    ) -> tuple[float, dict[str, Scalar]]:
+        """Evaluate federated model on the server.
+
+        It uses the centralized val set for sake of simplicity.
+
+        Parameters
+        ----------
+            server_round (int): current federated round.
+            parameters (NDArrays): current model parameters.
+            fed_eval_config (dict[str, Any]): mandatory argument in Flower, can contain
+                some configuration info
+
+        Returns
+        -------
+            tuple[float, dict[str, Scalar]]: evaluation results
+        """
+        device: str = get_device() # FIXME
+        net: Module = set_model_parameters(model_generator(), parameters)
+        net.to(device)
+
+        full_file: Path = get_paths()["centralized_mapping"] # FIXME
+        dataset: Dataset = load_femnist_dataset(get_paths()["data_dir"], full_file, "val") # FIXME
+
+        valid_loader = DataLoader(
+            dataset=dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            drop_last=False,
+        )
+
+        loss, acc = test_femnist(
+            net=net,
+            test_loader=valid_loader,
+            device=device,
+            criterion=criterion,
+            max_batches=max_batches,
+        )
+        return loss, {"accuracy": acc}
+
+    return federated_evaluation_function

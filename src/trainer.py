@@ -11,12 +11,16 @@ from logging import INFO
 
 from flwr_core import (
     get_network_generator,
-    get_model_parameters,
     get_flower_client_generator,
     FlowerRayClient,
     get_paths,
     fit_client_seeded,
 )
+
+from common.client_utils import (
+    get_model_parameters,
+)
+
 from utils import relative_to_absolute_path
 
 
