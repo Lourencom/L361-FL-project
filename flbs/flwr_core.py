@@ -22,7 +22,7 @@ from flwr.client.client import Client
 import matplotlib.pyplot as plt
 
 
-from .common.client_utils import (
+from common.client_utils import (
     Net,
     load_femnist_dataset,
     get_network_generator_cnn as get_network_generator,
@@ -30,8 +30,8 @@ from .common.client_utils import (
     test_femnist,
     save_history,
 )
-from .utils import get_git_root
-from .estimate import (
+from utils import get_git_root
+from estimate import (
     collect_gradients,
     compute_noise_scale_from_gradients,
 )
@@ -61,8 +61,8 @@ def get_device() -> str:
         device = "mps"
     return device
 
-def relevant_paths():
-    home_dir = get_git_root()
+def get_paths():
+    home_dir = Path(get_git_root())
     dataset_dir: Path = home_dir / "femnist"
     data_dir: Path = dataset_dir / "data"
     centralized_partition: Path = dataset_dir / "client_data_mappings" / "centralized"
@@ -186,6 +186,7 @@ class FlowerRayClient(flwr.client.NumPyClient):
         )
 
     def _load_dataset(self, name: str) -> Dataset:
+        data_dir = get_paths()["data_dir"]
         full_file: Path = self.partition_dir / str(self.cid)
         return load_femnist_dataset(
             mapping=full_file,
