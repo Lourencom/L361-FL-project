@@ -41,7 +41,7 @@ def centralized_experiment(centralized_train_cfg, centralized_test_cfg, train_lo
         model.train()
         running_loss = 0.0
         for batch_idx, (data, target) in enumerate(train_loader):
-            if batch_idx >= centralized_train_cfg["max_batches"]:
+            if "max_batches" in centralized_train_cfg and batch_idx >= centralized_train_cfg["max_batches"]:
                 break
             data, target = data.to(device), target.to(device)
             optimizer.zero_grad()
@@ -64,7 +64,7 @@ def centralized_experiment(centralized_train_cfg, centralized_test_cfg, train_lo
         correct, total = 0, 0
         with torch.no_grad():
             for batch_idx, (data, target) in enumerate(test_loader):
-                if batch_idx >= centralized_test_cfg["max_batches"]:
+                if "max_batches" in centralized_test_cfg and batch_idx >= centralized_test_cfg["max_batches"]:
                     break
                 data, target = data.to(device), target.to(device)
                 output = model(data)

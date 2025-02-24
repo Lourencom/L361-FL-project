@@ -188,7 +188,7 @@ class FlowerRayClient(flwr.client.NumPyClient):
                 weight_decay=float(config["weight_decay"]),
             ),
             criterion=torch.nn.CrossEntropyLoss(),
-            max_batches=int(config["max_batches"]),
+            max_batches=None if "max_batches" not in config else int(config["max_batches"]),
         )
 
     def _test(
@@ -199,7 +199,7 @@ class FlowerRayClient(flwr.client.NumPyClient):
             test_loader=test_loader,
             device=self.device,
             criterion=torch.nn.CrossEntropyLoss(),
-            max_batches=int(config["max_batches"]),
+            max_batches=None if "max_batches" not in config else int(config["max_batches"]),
         )
 
     def get_properties(self, config: dict[str, Scalar]) -> dict[str, Scalar]:
@@ -291,7 +291,7 @@ def get_federated_evaluation_function(
     num_workers: int,
     model_generator: Callable[[], Module],
     criterion: Module,
-    max_batches: int,
+    max_batches: int | None = None,
 ) -> Callable[[int, NDArrays, dict[str, Any]], tuple[float, dict[str, Scalar]]]:
     """Wrap the external federated evaluation function.
 
