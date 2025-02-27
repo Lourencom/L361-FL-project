@@ -3,16 +3,18 @@ import torch.nn as nn
 import numpy as np
 import random
 from logging import INFO
-
-from typing import Callable
+import time
+from typing import Callable, Optional
 
 import flwr
 from flwr.server import History, ServerConfig
 from flwr.server.strategy import Strategy, FedAvgM as FedAvg
 from flwr.common import log, NDArrays, Scalar, Parameters, ndarrays_to_parameters
 from flwr.client.client import Client
+from flwr.server.server_returns_parameters import ReturnParametersServer
+from flwr.server.client_manager import ClientManager, SimpleClientManager
 
-from src.flwr_core import Seeds, get_paths
+from src.flwr_core import Seeds, get_paths, TargetAccuracyServer
 
 from src.common.client_utils import (
     save_history,
@@ -25,6 +27,9 @@ from src.estimate import (
 
 
 def centralized_experiment(centralized_train_cfg, centralized_test_cfg, train_loader, test_loader, device, network):
+    """
+    Theoretically we dont care about the losses or accuracies, but for now we keep them.
+    """
     model = network.to(device)
     optimizer = torch.optim.Adam(
         model.parameters(),
@@ -35,11 +40,19 @@ def centralized_experiment(centralized_train_cfg, centralized_test_cfg, train_lo
 
     epoch_accuracies = []
     epoch_losses = []
+    
     epoch_noise_scales = []
+    epoch_times = [] # time per epoch
+    epoch_compute_budgets = [] # cumulative number of samples processed
 
-    for epoch in range(centralized_train_cfg["epochs"]):
+    #for epoch in range(centralized_train_cfg["epochs"]):
+    epoch = 0
+    while True: 
         model.train()
         running_loss = 0.0
+        cumulative_samples = 0
+
+        start_time = time.time()
         for batch_idx, (data, target) in enumerate(train_loader):
             if "max_batches" in centralized_train_cfg and batch_idx >= centralized_train_cfg["max_batches"]:
                 break
@@ -50,7 +63,14 @@ def centralized_experiment(centralized_train_cfg, centralized_test_cfg, train_lo
             loss.backward()
             optimizer.step()
 
+            cumulative_samples += data.size(0)
             running_loss += loss.item() * data.size(0)
+        
+        end_time = time.time()
+        epoch_time = end_time - start_time
+        epoch_times.append(epoch_time)
+        epoch_compute_budgets.append(cumulative_samples)
+
         running_loss /= len(train_loader.dataset)
         epoch_losses.append(running_loss)
 
@@ -63,7 +83,7 @@ def centralized_experiment(centralized_train_cfg, centralized_test_cfg, train_lo
         model.eval()
         correct, total = 0, 0
         with torch.no_grad():
-            for batch_idx, (data, target) in enumerate(test_loader):
+            for batch_idx, (data, target) in enumerate(train_loader):
                 if "max_batches" in centralized_test_cfg and batch_idx >= centralized_test_cfg["max_batches"]:
                     break
                 data, target = data.to(device), target.to(device)
@@ -76,13 +96,19 @@ def centralized_experiment(centralized_train_cfg, centralized_test_cfg, train_lo
 
         log(INFO, f"Epoch {epoch+1}/{centralized_train_cfg['epochs']}, Loss: {running_loss:.4f}, "
               f"Noise scale: {noise_scale:.4e}, Accuracy: {accuracy*100:.2f}%")
-    
+        
+        if accuracy > centralized_test_cfg["target_accuracy"]:
+            break
+        
+        epoch += 1
+
     return {
         "accuracies": epoch_accuracies,
         "losses": epoch_losses,
         "noise_scales": epoch_noise_scales,
+        "training_time": epoch_times,
+        "compute_cost": epoch_compute_budgets,
     }
-
 
 
 def start_seeded_simulation(
@@ -94,6 +120,8 @@ def start_seeded_simulation(
     return_all_parameters: bool = False,
     seed: int = Seeds.DEFAULT,
     iteration: int = 0,
+    client_manager: Optional[ClientManager] = None,
+    server: Optional[ReturnParametersServer] = None,
 ) -> tuple[list[tuple[int, NDArrays]], History]:
     """Wrap to seed client selection."""
     np.random.seed(seed ^ iteration)
@@ -105,6 +133,8 @@ def start_seeded_simulation(
         client_resources={},
         config=config,
         strategy=strategy,
+        client_manager=client_manager,
+        server=server,
     )
     save_history(get_paths()["home_dir"], hist, name) # FIXME
     return parameter_list, hist
@@ -128,6 +158,8 @@ def run_simulation(
     server_learning_rate: float = 1.0,
     server_momentum: float = 0.0,
     accept_failures: bool = False,
+    use_target_accuracy: bool = False,
+    target_accuracy: float = 0.6,
 ) -> tuple[list[tuple[int, NDArrays]], History]:
     """Run a federated simulation using Flower."""
     log(INFO, "FL will execute for %s rounds", num_rounds)
@@ -160,6 +192,13 @@ def run_simulation(
     def simulator_client_generator(cid: str) -> Client:
         return federated_client_generator(cid).to_client()
 
+    if use_target_accuracy:
+        client_manager = SimpleClientManager()
+        server = TargetAccuracyServer(client_manager=client_manager, strategy=strategy, target_accuracy=target_accuracy)
+    else:
+        server = None
+        client_manager = None
+
     parameters_for_each_round, hist = start_seeded_simulation(
         client_fn=simulator_client_generator,
         num_clients=num_total_clients,
@@ -168,5 +207,7 @@ def run_simulation(
         name="fedavg",
         return_all_parameters=True,
         seed=Seeds.DEFAULT,
+        client_manager=client_manager,
+        server=server,
     )
     return parameters_for_each_round, hist

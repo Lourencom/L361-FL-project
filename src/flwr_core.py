@@ -7,7 +7,7 @@ from collections import defaultdict, OrderedDict
 from collections.abc import Sequence, Callable
 import numbers
 import time
-
+from typing import Optional, Tuple, List
 import numpy as np
 import torch
 from torch import nn
@@ -16,10 +16,11 @@ from torch.utils.data import DataLoader, Dataset
 from enum import IntEnum
 import flwr
 from flwr.server import History, ServerConfig
+from flwr.server.server_returns_parameters import ReturnParametersServer
 from flwr.server.strategy import FedAvgM as FedAvg, Strategy
-from flwr.common import log, NDArrays, Scalar, Parameters, ndarrays_to_parameters
+from flwr.common import log, NDArrays, Scalar, Parameters, ndarrays_to_parameters, parameters_to_ndarrays
 from flwr.client.client import Client
-
+import timeit
 import matplotlib.pyplot as plt
 
 from .common.client import FlowerClient
@@ -229,6 +230,99 @@ class FlowerRayClient(flwr.client.NumPyClient):
     def get_test_set_size(self) -> int:
         """Return the client test set size."""
         return len(self._load_dataset("test"))  # type: ignore[reportArgumentType]
+
+
+class TargetAccuracyServer(ReturnParametersServer):
+    """Server that runs until reaching a target accuracy."""
+
+    def __init__(
+        self,
+        *args,
+        target_accuracy: float = 0.60,
+        **kwargs,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.target_accuracy = target_accuracy
+
+    def fit(self, num_rounds: int, timeout: Optional[float]) -> Tuple[List[Tuple[int, NDArrays]], History]:
+        """Run federated averaging until target accuracy is reached."""
+        history = History()
+        current_round = 0
+
+        # Initialize parameters
+        log(INFO, "Initializing global parameters")
+        self.parameters = self._get_initial_parameters(timeout=timeout)
+        self.return_params.append((0, parameters_to_ndarrays(self.parameters)))
+        
+        # Initial evaluation
+        log(INFO, "Evaluating initial parameters")
+        res = self.strategy.evaluate(0, parameters=self.parameters)
+        if res is not None:
+            log(
+                INFO,
+                "initial parameters (loss, other metrics): %s, %s",
+                res[0], res[1])
+            history.add_loss_centralized(server_round=0, loss=res[0])
+            history.add_metrics_centralized(server_round=0, metrics=res[1])
+
+        # Run federated learning until target accuracy or max rounds
+        log(INFO, f"FL starting - Target accuracy: {self.target_accuracy}")
+        start_time = timeit.default_timer()
+
+        while True:
+            current_round += 1
+            
+            # Train model
+            res_fit = self.fit_round(server_round=current_round, timeout=timeout)
+            if res_fit is not None:
+                parameters_prime, fit_metrics, _ = res_fit
+                if parameters_prime:
+                    self.parameters = parameters_prime
+                history.add_metrics_distributed_fit(
+                    server_round=current_round, metrics=fit_metrics
+                )
+                if self.return_all_parameters:
+                    self.return_params.append((current_round, parameters_to_ndarrays(self.parameters)))
+
+            # Evaluate model
+            res_cen = self.strategy.evaluate(current_round, parameters=self.parameters)
+            if res_cen is not None:
+                loss_cen, metrics_cen = res_cen
+                current_accuracy = metrics_cen.get("accuracy", 0.0)
+                log(
+                    INFO,
+                    "fit progress: (round %s, accuracy %s, loss %s, time %s)",
+                    current_round,
+                    current_accuracy,
+                    loss_cen,
+                    timeit.default_timer() - start_time,
+                )
+                history.add_loss_centralized(server_round=current_round, loss=loss_cen)
+                history.add_metrics_centralized(
+                    server_round=current_round, metrics=metrics_cen
+                )
+
+                # Check if target accuracy reached
+                if current_accuracy >= self.target_accuracy:
+                    log(INFO, f"Target accuracy {self.target_accuracy} reached in round {current_round}")
+                    break
+
+            # Evaluate on sample clients
+            res_fed = self.evaluate_round(server_round=current_round, timeout=timeout)
+            if res_fed is not None:
+                loss_fed, evaluate_metrics_fed, _ = res_fed
+                if loss_fed is not None:
+                    history.add_loss_distributed(server_round=current_round, loss=loss_fed)
+                    history.add_metrics_distributed(server_round=current_round, metrics=evaluate_metrics_fed)
+
+        if not self.return_all_parameters:
+            self.return_params.append((current_round, parameters_to_ndarrays(self.parameters)))
+
+        # Bookkeeping
+        end_time = timeit.default_timer()
+        elapsed = end_time - start_time
+        log(INFO, "FL finished in %s seconds after %s rounds", elapsed, current_round)
+        return self.return_params, history
 
 
 def fit_client_seeded(
