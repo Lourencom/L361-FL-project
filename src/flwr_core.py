@@ -6,6 +6,7 @@ from logging import INFO, DEBUG
 from collections import defaultdict, OrderedDict
 from collections.abc import Sequence, Callable
 import numbers
+import time
 
 import numpy as np
 import torch
@@ -127,6 +128,8 @@ class FlowerRayClient(flwr.client.NumPyClient):
 
     def fit(self, parameters: NDArrays, config: dict[str, Scalar]) -> tuple[NDArrays, int, dict]:
         """Receive and train a model on the local client data."""
+        start_time = time.time()
+        
         # Only create model right before training/testing
         # To lower memory usage when idle
         net = self.set_parameters(parameters)
@@ -135,13 +138,26 @@ class FlowerRayClient(flwr.client.NumPyClient):
         train_loader: DataLoader = self._create_data_loader(config, name="train")
         train_loss = self._train(net, train_loader=train_loader, config=config)
 
-        # Compute gradients
-        # Collect gradients for noise scale estimation.
+        # Compute gradients and noise scale
         grad_vectors = collect_gradients(net, train_loader, self.device, torch.nn.CrossEntropyLoss(), 5)
         # Compute local noise scale (Bsimple) on this client.
         local_noise_scale = compute_noise_scale_from_gradients(grad_vectors)
+        
+        # Calculate training time and samples processed
+        training_time = time.time() - start_time
+        
+        # Calculate actual samples processed considering max_batches
+        max_batches = config.get("max_batches", float("inf"))
+        actual_batches = min(len(train_loader), max_batches)
+        samples_processed = actual_batches * config["batch_size"]
 
-        return get_model_parameters(net), len(train_loader), {"train_loss": train_loss, "noise_scale": local_noise_scale}
+        return get_model_parameters(net), len(train_loader), {
+            "train_loss": train_loss, 
+            "noise_scale": local_noise_scale,
+            "training_time": training_time,
+            "samples_processed": samples_processed,
+            "actual_batches": actual_batches  # Adding this for debugging/verification
+        }
 
     def evaluate(self, parameters: NDArrays, config: dict[str, Scalar]) -> tuple[float, int, dict]:
         """Receive and test a model on the local client data."""
