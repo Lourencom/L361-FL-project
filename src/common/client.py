@@ -107,7 +107,7 @@ class FlowerClient(fl.client.NumPyClient):
         net.to(self.device)
 
         train_loader: DataLoader = self._create_data_loader(config, name="train")
-        train_loss = self._train(net, train_loader=train_loader, config=config)
+        train_loss, _ = self._train(net, train_loader=train_loader, config=config)
         return get_model_parameters(net), len(train_loader), {"train_loss": train_loss}
 
     def evaluate(

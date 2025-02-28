@@ -129,7 +129,6 @@ class FlowerRayClient(flwr.client.NumPyClient):
 
     def fit(self, parameters: NDArrays, config: dict[str, Scalar]) -> tuple[NDArrays, int, dict]:
         """Receive and train a model on the local client data."""
-        start_time = time.time()
         
         # Only create model right before training/testing
         # To lower memory usage when idle
@@ -137,15 +136,13 @@ class FlowerRayClient(flwr.client.NumPyClient):
         net.to(self.device)
 
         train_loader: DataLoader = self._create_data_loader(config, name="train")
-        train_loss = self._train(net, train_loader=train_loader, config=config)
+        train_loss, training_time = self._train(net, train_loader=train_loader, config=config)
 
         # Compute gradients and noise scale
         grad_vectors = collect_gradients(net, train_loader, self.device, torch.nn.CrossEntropyLoss(), 5)
         # Compute local noise scale (Bsimple) on this client.
         local_noise_scale = compute_noise_scale_from_gradients(grad_vectors)
         
-        # Calculate training time and samples processed
-        training_time = time.time() - start_time
         
         # Calculate actual samples processed considering max_batches
         max_batches = config.get("max_batches", float("inf"))
@@ -206,6 +203,7 @@ class FlowerRayClient(flwr.client.NumPyClient):
             ),
             criterion=torch.nn.CrossEntropyLoss(),
             max_batches=None if "max_batches" not in config else int(config["max_batches"]),
+            return_total_time=True,
         )
 
     def _test(

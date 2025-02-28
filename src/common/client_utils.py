@@ -12,6 +12,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, cast
 from collections.abc import Callable, Sized
+import time
 
 import numpy as np
 import torch
@@ -130,6 +131,7 @@ def train_femnist(
     optimizer: torch.optim.Optimizer,
     criterion: Module,
     max_batches: int | None = None,
+    return_total_time: bool = False,
     **kwargs: dict[str, Any],
 ) -> float:
     """Trains the network on the training set.
@@ -149,19 +151,26 @@ def train_femnist(
     """
     net.train()
     running_loss, total = 0.0, 0
+    total_time = 0.0
     for _ in range(epochs):
         running_loss = 0.0
         total = 0
         for i, (data, labels) in enumerate(train_loader):
             if max_batches is not None and i >= max_batches:
                 break
+
             data, labels = data.to(device), labels.to(device)
+            start_time = time.time()
             optimizer.zero_grad()
             loss = criterion(net(data), labels)
             running_loss += loss.item()
             total += labels.size(0)
             loss.backward()
             optimizer.step()
+            end_time = time.time()
+            total_time += end_time - start_time
+    if return_total_time:
+        return running_loss / total, total_time
     return running_loss / total
 
 
