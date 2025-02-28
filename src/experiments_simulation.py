@@ -47,39 +47,62 @@ def centralized_experiment(centralized_train_cfg, centralized_test_cfg, train_lo
 
     #for epoch in range(centralized_train_cfg["epochs"]):
     epoch = 0
+    total_time = 0.0
     while True: 
         model.train()
         running_loss = 0.0
         cumulative_samples = 0
 
-        start_time = time.time()
+        
+
+        val_epoch_interval = 50
+
+        finished = False
+        epoch_time = 0.0
         for batch_idx, (data, target) in enumerate(train_loader):
             if "max_batches" in centralized_train_cfg and batch_idx >= centralized_train_cfg["max_batches"]:
                 break
+            
             data, target = data.to(device), target.to(device)
+            start_time = time.time()
             optimizer.zero_grad()
             output = model(data)
             loss = criterion(output, target)
             loss.backward()
             optimizer.step()
-
+            end_time = time.time()
+            total_time += end_time - start_time
+            epoch_time += end_time - start_time
             cumulative_samples += data.size(0)
+            
             running_loss += loss.item() * data.size(0)
+
+            if batch_idx % val_epoch_interval == 0:
+                # Evaluate the trained model
+                model.eval()
+                correct, total = 0, 0
+                with torch.no_grad():
+                    for batch_idx, (data, target) in enumerate(train_loader):
+                        if "max_batches" in centralized_test_cfg and batch_idx >= centralized_test_cfg["max_batches"]:
+                            break
+                        data, target = data.to(device), target.to(device)
+                        output = model(data)
+                        preds = output.argmax(dim=1)
+                        correct += (preds == target).sum().item()
+                        total += target.size(0)
+
+                acc = correct / total
+
+                if acc > centralized_test_cfg["target_accuracy"]:
+                    log(INFO, "Epoch finished early, target accuracy reached")
+                    finished = True
+                    break
+            
+        if finished:
+            break
+
         
-        end_time = time.time()
-        epoch_time = end_time - start_time
-        epoch_times.append(epoch_time)
-        epoch_compute_budgets.append(cumulative_samples)
-
-        running_loss /= len(train_loader.dataset)
-        epoch_losses.append(running_loss)
-
-        # collect gradients over a few mini-batches
-        grad_vectors = collect_gradients(model, train_loader, device, criterion, 5) 
-        noise_scale = compute_noise_scale_from_gradients(grad_vectors)
-        epoch_noise_scales.append(noise_scale)
-
-        # Evaluate the trained model
+         # Evaluate the trained model
         model.eval()
         correct, total = 0, 0
         with torch.no_grad():
@@ -94,8 +117,20 @@ def centralized_experiment(centralized_train_cfg, centralized_test_cfg, train_lo
         accuracy = correct / total
         epoch_accuracies.append(accuracy)
 
+        
+        epoch_compute_budgets.append(cumulative_samples)
+
+        running_loss /= len(train_loader.dataset)
+        epoch_losses.append(running_loss)
+
+        # collect gradients over a few mini-batches
+        grad_vectors = collect_gradients(model, train_loader, device, criterion, 5) 
+        noise_scale = compute_noise_scale_from_gradients(grad_vectors)
+        epoch_noise_scales.append(noise_scale)
+
+
         log(INFO, f"Epoch {epoch+1}/{centralized_train_cfg['epochs']}, Loss: {running_loss:.4f}, "
-              f"Noise scale: {noise_scale:.4e}, Accuracy: {accuracy*100:.2f}%")
+              f"Noise scale: {noise_scale:.4e}, Accuracy: {accuracy*100:.2f}%, Epoch time: {epoch_time:.2f}s")
         
         if accuracy > centralized_test_cfg["target_accuracy"]:
             break
@@ -106,7 +141,7 @@ def centralized_experiment(centralized_train_cfg, centralized_test_cfg, train_lo
         "accuracies": epoch_accuracies,
         "losses": epoch_losses,
         "noise_scales": epoch_noise_scales,
-        "training_time": epoch_times,
+        "training_time": total_time,
         "compute_cost": epoch_compute_budgets,
     }
 
