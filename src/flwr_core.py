@@ -143,7 +143,7 @@ class FlowerRayClient(flwr.client.NumPyClient):
         # Compute local noise scale (Bsimple) on this client.
         local_noise_scale = compute_noise_scale_from_gradients(grad_vectors)
         
-        
+        G_small_norm_squared = torch.stack(grad_vectors).pow(2).mean().item()  # Convert to Python scalar
         # Calculate actual samples processed considering max_batches
         max_batches = config.get("max_batches", float("inf"))
         actual_batches = min(len(train_loader), max_batches)
@@ -152,9 +152,10 @@ class FlowerRayClient(flwr.client.NumPyClient):
         return get_model_parameters(net), len(train_loader), {
             "train_loss": train_loss, 
             "noise_scale": local_noise_scale,
+            "G_small_norm_squared": float(G_small_norm_squared),  # Ensure it's a Python float
             "training_time": training_time,
             "samples_processed": samples_processed,
-            "actual_batches": actual_batches  # Adding this for debugging/verification
+            "actual_batches": actual_batches
         }
 
     def evaluate(self, parameters: NDArrays, config: dict[str, Scalar]) -> tuple[float, int, dict]:
