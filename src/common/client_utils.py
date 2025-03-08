@@ -152,6 +152,7 @@ def train_femnist(
     net.train()
     running_loss, total = 0.0, 0
     total_time = 0.0
+    cnt = 0
     for _ in range(epochs):
         running_loss = 0.0
         total = 0
@@ -160,17 +161,18 @@ def train_femnist(
                 break
 
             data, labels = data.to(device), labels.to(device)
-            start_time = time.time()
+            start_time = time.process_time()
             optimizer.zero_grad()
             loss = criterion(net(data), labels)
             running_loss += loss.item()
             total += labels.size(0)
             loss.backward()
             optimizer.step()
-            end_time = time.time()
+            end_time = time.process_time()
             total_time += end_time - start_time
+            cnt += 1
     if return_total_time:
-        return running_loss / total, total_time
+        return running_loss / total, total_time / cnt
     return running_loss / total
 
 
