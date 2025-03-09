@@ -192,3 +192,74 @@ fig.savefig(os.path.join(save_dir, "lr_scaling_federated.png"))
 
 plt.tight_layout()
 plt.show()
+
+
+
+
+time_per_round = 0.00427
+cohort_sizes =  [5, 10, 20, 50, 75, 100]
+total_cohort_results = []
+for cohort_size in cohort_sizes:
+
+    total_cohort_results.append(load_experiment_pickle(f"recent_correct_exps/federated_cohort_results1_{cohort_size}.pkl"))
+
+# Create first figure: Compute Budget vs Training Time
+fig, ax = plt.subplots(figsize=(10, 6))
+
+x_vals = []
+y_vals = []
+for cohort_size, params, hist in total_cohort_results:
+    times = []
+    samples = []
+    num_rounds = len(hist.metrics_distributed_fit['samples_processed'])
+    cumulative_time = num_rounds * time_per_round
+
+    for round_idx, round_metrics in hist.metrics_distributed_fit['samples_processed']:
+        round_samples = [s for _, s in round_metrics['all']]
+        samples.append(np.sum(round_samples))
+    
+    total_samples = np.sum(samples)
+    x_vals.append(cumulative_time)
+    y_vals.append(total_samples)
+    ax.plot(cumulative_time, total_samples, marker='o', label=f"Cohort size: {cohort_size}")
+
+ax.plot(x_vals, y_vals, linestyle='--', color='black')
+ax.set_xlabel("Total Training Time (s)")
+ax.set_ylabel("Compute Budget (Total Samples Processed)")
+ax.set_title("Compute Budget vs. Total Training Time")
+ax.legend()
+ax.grid(True)
+
+fig.savefig(os.path.join(save_dir, "compute_budget_federated.png"))
+
+# Create second figure: Noise Scale Analysis
+fig, ax = plt.subplots(figsize=(10, 6))
+
+x_vals = []
+y_vals = []
+for cohort_size, params, hist in total_cohort_results:
+    noise_scales = []
+    for round_idx, round_metrics in hist.metrics_distributed_fit['noise_scale']:
+        round_noise_scales = [ns for _, ns in round_metrics['all']]
+        noise_scale = np.mean(round_noise_scales)
+        noise_scales.append(noise_scale)
+    
+    avg_noise_scale = np.mean(noise_scales)
+    x_axis = cohort_size / (avg_noise_scale + 1e-10)
+    y_axis = 1 / (1 + (avg_noise_scale / cohort_size))
+    x_vals.append(x_axis)
+    y_vals.append(y_axis)
+    
+    ax.plot(x_axis, y_axis, marker='o', label=f"Cohort size: {cohort_size}")
+
+ax.plot(x_vals, y_vals, linestyle='--', color='black')
+ax.set_xlabel("Cohort Size / Noise Scale")
+ax.set_ylabel(fr"${{\epsilon_\text{{B}}}} / {{\epsilon_\text{{max}}}}$")
+ax.set_title("Predicted Training Speed")
+ax.legend()
+ax.grid(True)
+
+fig.savefig(os.path.join(save_dir, "noise_scale_cohort_federated.png"))
+
+plt.tight_layout()
+plt.show()
