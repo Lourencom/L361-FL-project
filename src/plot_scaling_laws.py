@@ -334,7 +334,8 @@ for batch_size, params, hist in total_global_batch_results:
 
 
 ax.axvline(x=1, color='gray', linestyle='--')
-ax.plot(x_vals, y_vals, linestyle='-', color='#1f77b4')
+# send this to behind the dots
+ax.plot(x_vals, y_vals, linestyle='-', color='#1f77b4', linewidth=4, zorder=0)
 ax.set_xlabel("Global Batch Size / Noise Scale")
 ax.set_ylabel(fr"${{\epsilon_\text{{B}}}} / {{\epsilon_\text{{max}}}}$")
 ax.set_yscale('log')
