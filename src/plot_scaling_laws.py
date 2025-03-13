@@ -325,7 +325,7 @@ for batch_size, params, hist in total_global_batch_results:
 
     
     avg_noise_scale = 108600.0 # from critical bs plot
-    x_axis = batch_size
+    x_axis = batch_size / avg_noise_scale
     y_axis = 1 / (1 + (avg_noise_scale / batch_size))
     x_vals.append(x_axis)
     y_vals.append(y_axis)
@@ -333,8 +333,10 @@ for batch_size, params, hist in total_global_batch_results:
     ax.plot(x_axis, y_axis, marker='o', label=f"Global batch size: {batch_size}")
 
 ax.plot(x_vals, y_vals, linestyle='--', color='black')
-ax.set_xlabel("Global Batch Size")
+ax.set_xlabel("Global Batch Size / Noise Scale")
 ax.set_ylabel(fr"${{\epsilon_\text{{B}}}} / {{\epsilon_\text{{max}}}}$")
+ax.set_yscale('log')
+ax.set_xscale('log')
 ax.set_title("Predicted Training Speed")
 ax.legend()
 ax.grid(True)
