@@ -277,7 +277,7 @@ plt.show()
 # global batch size
 
 time_per_round = 0.00427
-cs_bs_pairs = [(5, 20), (20, 50), (50, 200), (100, 250), (100, 1000), (100, 2000)]
+cs_bs_pairs = [(5, 20), (20, 50), (50, 200), (100, 250), (100, 1000), (100, 2000), (100, 4000), (100, 12000)]
 total_global_batch_results = []
 for cohort_size, batch_size in cs_bs_pairs:
     global_batch_size = cohort_size * batch_size
@@ -332,14 +332,16 @@ for batch_size, params, hist in total_global_batch_results:
     
     ax.plot(x_axis, y_axis, marker='o', label=f"Global batch size: {batch_size}")
 
-ax.plot(x_vals, y_vals, linestyle='--', color='black')
+
+ax.axvline(x=1, color='gray', linestyle='--')
+ax.plot(x_vals, y_vals, linestyle='-', color='#1f77b4')
 ax.set_xlabel("Global Batch Size / Noise Scale")
 ax.set_ylabel(fr"${{\epsilon_\text{{B}}}} / {{\epsilon_\text{{max}}}}$")
 ax.set_yscale('log')
 ax.set_xscale('log')
 ax.set_title("Predicted Training Speed")
 ax.legend()
-ax.grid(True)
+#ax.grid(True)
 
 fig.savefig(os.path.join(save_dir, "lr_scaling_global_batch_size.png"))
 
