@@ -22,7 +22,7 @@ os.makedirs(save_dir, exist_ok=True)
 x_vals = []
 y_vals = []
 centralized_experiment_results = [
-    (batch_size, load_experiment(os.path.join(project_root, "recent_correct_exps", f"centralized_experiment_results_{batch_size}.json")))
+    (batch_size, load_experiment(os.path.join(project_root, "results", f"centralized_experiment_results_{batch_size}.json")))
     for batch_size in centralized_experiment_batch_sizes
 ]
 # Left subplot: Compute Budget vs. Cumulative Training Time for each batch size
@@ -119,7 +119,7 @@ os.makedirs(save_dir, exist_ok=True)
 
 total_batch_results = []
 for batch_size in experiment_batch_sizes:
-    save_file_name = os.path.join(project_root, "recent_correct_exps", f"federated_batch_results_{batch_size}.pkl")
+    save_file_name = os.path.join(project_root, "results", f"federated_batch_results_{batch_size}.pkl")
     total_batch_results.append(load_experiment_pickle(save_file_name))
 
 # Create first figure: Compute Budget vs Training Time
@@ -201,7 +201,7 @@ cohort_sizes =  [5, 10, 20, 50, 75, 100]
 total_cohort_results = []
 for cohort_size in cohort_sizes:
 
-    total_cohort_results.append(load_experiment_pickle(f"recent_correct_exps/federated_cohort_results1_{cohort_size}.pkl"))
+    total_cohort_results.append(load_experiment_pickle(f"results/federated_cohort_results1_{cohort_size}.pkl"))
 
 # Create first figure: Compute Budget vs Training Time
 fig, ax = plt.subplots(figsize=(10, 6))
@@ -282,7 +282,7 @@ total_global_batch_results = []
 for cohort_size, batch_size in cs_bs_pairs:
     global_batch_size = cohort_size * batch_size
 
-    total_global_batch_results.append(load_experiment_pickle(f"recent_correct_exps/federated_global_batch_results_{global_batch_size}.pkl"))
+    total_global_batch_results.append(load_experiment_pickle(f"results/federated_global_batch_results_{global_batch_size}.pkl"))
 
 # Create first figure: Compute Budget vs Training Time
 fig, ax = plt.subplots(figsize=(10, 6))
