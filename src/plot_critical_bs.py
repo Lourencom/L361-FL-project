@@ -15,6 +15,8 @@ mean_t = [np.mean([B_simples[run][i] for run in range(len(B_simples)) if i < len
 std_t = [np.std([B_simples[run][i] for run in range(len(B_simples)) if i < len(B_simples[run])]) for i in range(rounds)]
 
 mean_t = np.array(mean_t)
+
+print(np.mean(mean_t)) # 108600
 std_t = np.array(std_t)
 
 fig, ax = plt.subplots(figsize=(10, 5))

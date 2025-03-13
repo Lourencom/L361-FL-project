@@ -201,7 +201,7 @@ cohort_sizes =  [5, 10, 20, 50, 75, 100]
 total_cohort_results = []
 for cohort_size in cohort_sizes:
 
-    total_cohort_results.append(load_experiment_pickle(f"results/federated_cohort_results1_{cohort_size}.pkl"))
+    total_cohort_results.append(load_experiment_pickle(f"results/federated_cohort_results_{cohort_size}.pkl"))
 
 # Create first figure: Compute Budget vs Training Time
 fig, ax = plt.subplots(figsize=(10, 6))
@@ -277,7 +277,7 @@ plt.show()
 # global batch size
 
 time_per_round = 0.00427
-cs_bs_pairs = [(5, 20), (20, 50), (50, 200), (100, 250)]
+cs_bs_pairs = [(5, 20), (20, 50), (50, 200), (100, 250), (100, 1000), (100, 2000)]
 total_global_batch_results = []
 for cohort_size, batch_size in cs_bs_pairs:
     global_batch_size = cohort_size * batch_size
@@ -320,14 +320,12 @@ x_vals = []
 y_vals = []
 rel_y = None
 for batch_size, params, hist in total_global_batch_results:
-    noise_scales = []
     for round_idx, round_metrics in hist.metrics_distributed_fit['noise_scale']:
         round_noise_scales = [ns for _, ns in round_metrics['all']]
-        noise_scale = np.mean(round_noise_scales)
-        noise_scales.append(noise_scale)
+
     
-    avg_noise_scale = np.mean(noise_scales)
-    x_axis = batch_size / (avg_noise_scale + 1e-10)
+    avg_noise_scale = 108600.0 # from critical bs plot
+    x_axis = batch_size
     y_axis = 1 / (1 + (avg_noise_scale / batch_size))
     x_vals.append(x_axis)
     y_vals.append(y_axis)
@@ -335,7 +333,7 @@ for batch_size, params, hist in total_global_batch_results:
     ax.plot(x_axis, y_axis, marker='o', label=f"Global batch size: {batch_size}")
 
 ax.plot(x_vals, y_vals, linestyle='--', color='black')
-ax.set_xlabel("Global Batch Size / Noise Scale")
+ax.set_xlabel("Global Batch Size")
 ax.set_ylabel(fr"${{\epsilon_\text{{B}}}} / {{\epsilon_\text{{max}}}}$")
 ax.set_title("Predicted Training Speed")
 ax.legend()
