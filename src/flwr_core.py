@@ -63,6 +63,7 @@ def get_paths():
     centralized_partition: Path = dataset_dir / "client_data_mappings" / "centralized"
     centralized_mapping: Path = dataset_dir / "client_data_mappings" / "centralized" / "0"
     federated_partition: Path = dataset_dir / "client_data_mappings" / "fed_natural"
+    iid_partition: Path = dataset_dir / "client_data_mappings" / "fed_iid"
     
     paths = {
         "home_dir": home_dir,
@@ -70,7 +71,8 @@ def get_paths():
         "data_dir": data_dir,
         "centralized_partition": centralized_partition,
         "centralized_mapping": centralized_mapping,
-        "federated_partition": federated_partition
+        "federated_partition": federated_partition,
+        "iid_partition": iid_partition
     }
     return paths
 
@@ -478,3 +480,66 @@ def get_federated_evaluation_function(
         return loss, {"accuracy": acc}
 
     return federated_evaluation_function
+
+
+def create_iid_partition(paths: dict, num_clients: int = 10, seed: int = 42):
+    """Create IID partition by randomly distributing data among clients."""
+    import pandas as pd
+    import numpy as np
+    
+    # Create directory if it doesn't exist
+    iid_dir = paths["iid_partition"]
+    iid_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Read all training and test data from centralized partition
+    train_data = pd.DataFrame()
+    test_data = pd.DataFrame()
+    
+    # Read and combine all data from centralized partition
+    centralized_dir = paths["centralized_partition"]
+    for client_dir in centralized_dir.iterdir():
+        if client_dir.is_dir():
+            train_file = client_dir / "train.csv"
+            test_file = client_dir / "test.csv"
+            
+            if train_file.exists():
+                client_train = pd.read_csv(train_file)
+                train_data = pd.concat([train_data, client_train], ignore_index=True)
+            
+            if test_file.exists():
+                client_test = pd.read_csv(test_file)
+                test_data = pd.concat([test_data, client_test], ignore_index=True)
+    
+    # Set random seed for reproducibility
+    np.random.seed(seed)
+    
+    # Shuffle the data
+    train_data = train_data.sample(frac=1, random_state=seed).reset_index(drop=True)
+    test_data = test_data.sample(frac=1, random_state=seed).reset_index(drop=True)
+    
+    # Calculate samples per client
+    train_samples_per_client = len(train_data) // num_clients
+    test_samples_per_client = len(test_data) // num_clients
+    
+    # Distribute data to clients
+    for client_id in range(num_clients):
+        client_dir = iid_dir / str(client_id)
+        client_dir.mkdir(exist_ok=True)
+        
+        # Get client's portion of data
+        train_start = client_id * train_samples_per_client
+        train_end = train_start + train_samples_per_client if client_id < num_clients - 1 else len(train_data)
+        
+        test_start = client_id * test_samples_per_client
+        test_end = test_start + test_samples_per_client if client_id < num_clients - 1 else len(test_data)
+        
+        # Assign client_id to the data
+        client_train_data = train_data.iloc[train_start:train_end].copy()
+        client_test_data = test_data.iloc[test_start:test_end].copy()
+        
+        client_train_data['client_id'] = client_id
+        client_test_data['client_id'] = client_id
+        
+        # Save train and test data for this client
+        client_train_data.to_csv(client_dir / "train.csv", index=False)
+        client_test_data.to_csv(client_dir / "test.csv", index=False)
