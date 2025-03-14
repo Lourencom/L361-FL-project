@@ -68,3 +68,32 @@ def collect_gradients(model, train_loader, device, criterion, num_mini_batches):
         if grad_vector is not None:
             grad_vectors.append(grad_vector)
     return grad_vectors
+
+
+def collect_accumulated_gradients(model, train_loader, device, criterion, accumulation_steps, num_mini_batches, optimizer):
+    
+    assert num_mini_batches % accumulation_steps == 0, "num_mini_batches must be divisible by accumulation_steps"
+
+    grad_vectors = []
+    optimizer.zero_grad()
+    for i, (data, target) in enumerate(train_loader):
+        data, target = data.to(device), target.to(device)
+        if i >= num_mini_batches:
+            break
+        
+        output = model(data)
+        loss = criterion(output, target)
+        loss.backward()
+
+        if i % accumulation_steps == 0:
+            grads = []
+            for p in model.parameters():
+                if p.grad is not None:
+                    grads.append(p.grad.view(-1))
+
+            grads = torch.cat(grads)
+            grad_vectors.append(grads)
+
+            optimizer.zero_grad()
+
+    return [grad_vector / accumulation_steps for grad_vector in grad_vectors]

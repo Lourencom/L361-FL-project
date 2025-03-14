@@ -23,6 +23,7 @@ from src.common.client_utils import (
 from src.estimate import (
     compute_noise_scale_from_gradients,
     collect_gradients,
+    collect_accumulated_gradients,
 )
 
 
@@ -144,6 +145,61 @@ def centralized_experiment(centralized_train_cfg, centralized_test_cfg, train_lo
         "training_time": total_time,
         "compute_cost": epoch_compute_budgets,
     }
+
+
+
+
+
+def centralized_critical_bs_estimation(centralized_train_cfg, centralized_test_cfg, train_loader, test_loader, device, network, accumulation_steps=8, log = False):
+    """
+    Theoretically we dont care about the losses or accuracies, but for now we keep them.
+    """
+    model = network.to(device)
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=centralized_train_cfg["client_learning_rate"],
+        weight_decay=centralized_train_cfg["weight_decay"]
+        )
+    criterion = nn.CrossEntropyLoss()
+
+    B_small = centralized_train_cfg["batch_size"]
+    B_big = B_small * accumulation_steps
+
+    B_simples = []
+    for epoch in range(centralized_train_cfg["epochs"]):
+        model.train()
+
+        for batch_idx, (data, target) in enumerate(train_loader):
+            if "max_batches" in centralized_train_cfg and batch_idx >= centralized_train_cfg["max_batches"]:
+                break
+            
+            data, target = data.to(device), target.to(device)
+
+            optimizer.zero_grad()
+            output = model(data)
+            loss = criterion(output, target)
+            loss.backward()
+            optimizer.step()
+
+        accumulated_grad_vectors = collect_accumulated_gradients(model, train_loader, device, criterion, accumulation_steps, accumulation_steps*5, optimizer) 
+        grad_vectors = collect_gradients(model, train_loader, device, criterion, 5)
+
+        G_big = torch.norm(torch.mean(torch.stack(accumulated_grad_vectors), dim=0))**2
+        grad_norms_squared = torch.tensor([torch.norm(G_local)**2 for G_local in grad_vectors])
+        G_small = torch.mean(grad_norms_squared)
+
+        G2 = (1 / (B_big - B_small)) * (B_big * G_big - B_small * G_small)
+        S =  (B_small * B_big / (B_small - B_big)) * (G_big - G_small)
+        B_simple = S / G2
+        B_simples.append(B_simple)
+
+        if log:
+            log(INFO, f"Epoch {epoch+1}/{centralized_train_cfg['epochs']}, B_simple: {B_simple:.2f}, B_big: {B_big}, B_small: {B_small}")
+
+    return B_simples
+
+
+
 
 
 def start_seeded_simulation(
