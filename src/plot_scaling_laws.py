@@ -25,40 +25,47 @@ centralized_experiment_results = [
     (batch_size, load_experiment(os.path.join(project_root, "results", f"centralized_experiment_results_{batch_size}.json")))
     for batch_size in centralized_experiment_batch_sizes
 ]
+
 # Left subplot: Compute Budget vs. Cumulative Training Time for each batch size
-for batch_size, results in centralized_experiment_results:
+fig, ax = plt.subplots(figsize=(10, 6))
 
-    # Calculate cumulative training time (sum over epochs)
-    cumulative_time = np.sum(results["training_time"])
-    compute_budget = np.sum(results["compute_cost"])
-    x_vals.append(cumulative_time)
-    y_vals.append(compute_budget)
-    ax.plot(cumulative_time, compute_budget, marker='o', label=f"Batch size: {batch_size}")
-    
-    print(f"Batch size: {batch_size}")
-    print(f"Total Training Time (s): {cumulative_time}")
-    print(f"Compute Budget (samples): {compute_budget}")
+accuracy_thresholds = [0.4, 0.5, 0.6]
+colors = ['#1f77b4', '#ff7f0e', '#2ca02c']  # Blue, Orange, Green
 
+for idx, (accuracy_threshold, color) in enumerate(zip(accuracy_thresholds, colors)):
+    x_vals = []
+    y_vals = []
+    for batch_size, results in centralized_experiment_results:
+        # Find number of epochs to reach accuracy threshold
+        num_epochs = len(results["accuracies"])
+        for epoch, acc in enumerate(results["accuracies"]):
+            if acc >= accuracy_threshold:
+                num_epochs = epoch + 1
+                break
 
+        time_per_round = results["training_time"] / len(results["accuracies"])
+        cumulative_time = time_per_round * num_epochs
+        compute_budget = np.sum(results["compute_cost"][:num_epochs])
+        
+        x_vals.append(cumulative_time)
+        y_vals.append(compute_budget)
+        ax.plot(cumulative_time, compute_budget, marker='o', color=color,
+                label=f"Batch size: {batch_size}, Acc threshold: {accuracy_threshold}")
+        
+        print(f"Batch size: {batch_size}, Acc threshold: {accuracy_threshold}")
+        print(f"Total Training Time (s): {cumulative_time}")
+        print(f"Compute Budget (samples): {compute_budget}")
 
-# this makes the fit better
-#x_vals = x_vals[:-2] + x_vals[-1:]
-#y_vals = y_vals[:-2] + y_vals[-1:]
-# Fit a power law to the data
-#popt, _ = curve_fit(lambda t, a, b, c: a * t**b + c, x_vals, y_vals)#
-#a, b, c = popt
+    ax.plot(x_vals, y_vals, linestyle='--', color=color)
 
-ax.plot(x_vals, y_vals, linestyle='--', color='black')
-# Plot the power law fit
-#ax.plot(x_vals, a * np.array(x_vals)**b + c, label=f"Power law fit: {a:.2e} * t^{b:.2f} + {c:.2e}")
-
+ax.set_yscale('log')
+ax.set_xscale('log')
 ax.set_xlabel("Total Training Time (s)")
 ax.set_ylabel("Compute Budget (Total Samples Processed)")
 ax.set_title("Compute Budget vs. Total Training Time")
 ax.legend()
-ax.grid(True)
 
-fig.savefig(os.path.join(save_dir, "noise_scaling_tradeoff_centralized.png"))
+fig.savefig(os.path.join(save_dir, "compute_budget_centralized.png"))
 
 x_vals = []
 y_vals = []
@@ -79,14 +86,14 @@ for batch_size, results in centralized_experiment_results:
     print(f"Noise Scale: {noise_scale}")
 
 
-ax.plot(x_vals, y_vals, linestyle='--', color='black')
-# x axis log scale
+ax.axvline(x=1, color='gray', linestyle='--')
+ax.plot(x_vals, y_vals, linestyle='-', color='#1f77b4', linewidth=4, zorder=0)
+ax.set_yscale('log')
 ax.set_xscale('log')
 ax.set_xlabel("Batch Size / Noise Scale")
 ax.set_ylabel(fr"${{\epsilon_\text{{B}}}} / {{\epsilon_\text{{max}}}}$")
 ax.set_title("Predicted Training Speed")
 ax.legend()
-ax.grid(True)
 
 fig.savefig(os.path.join(save_dir, "lr_scaling_centralized.png"))
 
@@ -113,6 +120,8 @@ def load_experiment_pickle(file_name):
     )
 
 
+###################################################### LOCAL BATCH SIZE #####################################################
+
 experiment_batch_sizes = [16, 32, 64, 128, 256]
 save_dir = os.path.join(project_root, "plots", "federated")
 os.makedirs(save_dir, exist_ok=True)
@@ -125,37 +134,49 @@ for batch_size in experiment_batch_sizes:
 # Create first figure: Compute Budget vs Training Time
 fig, ax = plt.subplots(figsize=(10, 6))
 
-x_vals = []
-y_vals = []
-for batch_size, params, hist in total_batch_results:
-    times = []
-    samples = []
-    for round_idx, round_metrics in hist.metrics_distributed_fit['training_time']:
-        round_times = [t for _, t in round_metrics['all']]
-        times.append(np.mean(round_times))
+accuracy_thresholds = [0.4, 0.5, 0.6]
+for accuracy_threshold in accuracy_thresholds:
+    x_vals = []
+    y_vals = []
+    for batch_size, params, hist in total_batch_results:
+        times = []
+        samples = []
         
-    for round_idx, round_metrics in hist.metrics_distributed_fit['samples_processed']:
-        round_samples = [s for _, s in round_metrics['all']]
-        samples.append(np.sum(round_samples))
-    
-    cumulative_time = np.sum(times)
-    total_samples = np.sum(samples)
-    x_vals.append(cumulative_time)
-    y_vals.append(total_samples)
-    ax.plot(cumulative_time, total_samples, marker='o', label=f"Local batch size: {batch_size}")
-    
-    print(f"Batch size: {batch_size}")
-    print(f"Total Training Time (s): {cumulative_time}")
-    print(f"Compute Budget (samples): {total_samples}")
+        num_rounds = len(hist.metrics_centralized['accuracy']) - 1
+        for round_idx, centralized_accuracy in hist.metrics_centralized['accuracy']:
+            if centralized_accuracy >= accuracy_threshold:
+                num_rounds = round_idx
+                break
 
-ax.plot(x_vals, y_vals, linestyle='--', color='black')
+        for round_idx, round_metrics in hist.metrics_distributed_fit['training_time']:
+            if round_idx > num_rounds:
+                break
+            round_times = [t for _, t in round_metrics['all']]
+            times.append(np.mean(round_times))
+            
+        for round_idx, round_metrics in hist.metrics_distributed_fit['samples_processed']:
+            if round_idx > num_rounds:
+                break
+            round_samples = [s for _, s in round_metrics['all']]
+            samples.append(np.sum(round_samples))
+        
+        cumulative_time = np.sum(times)
+        total_samples = np.sum(samples)
+        x_vals.append(cumulative_time)
+        y_vals.append(total_samples)
+        ax.plot(cumulative_time, total_samples, marker='o', 
+                label=f"Local Batch size: {batch_size}, Acc threshold: {accuracy_threshold}")
+
+    ax.plot(x_vals, y_vals, linestyle='--', color='black')
+
+ax.set_yscale('log')
+ax.set_xscale('log')
 ax.set_xlabel("Total Training Time (s)")
 ax.set_ylabel("Compute Budget (Total Samples Processed)")
 ax.set_title("Compute Budget vs. Total Training Time")
 ax.legend()
-ax.grid(True)
 
-fig.savefig(os.path.join(save_dir, "noise_scaling_tradeoff_federated.png"))
+fig.savefig(os.path.join(save_dir, "compute_budget_federated_local_batch_size.png"))
 
 # Create second figure: Noise Scale Analysis
 fig, ax = plt.subplots(figsize=(10, 6))
@@ -175,25 +196,27 @@ for batch_size, params, hist in total_batch_results:
     x_vals.append(x_axis)
     y_vals.append(y_axis)
     
-    ax.plot(x_axis, y_axis, marker='o', label=f"Batch size: {batch_size}")
+    ax.plot(x_axis, y_axis, marker='o', label=f"Local Batch size: {batch_size}")
     
     print(f"Batch size: {batch_size}")
     print(f"Avg Noise Scale: {avg_noise_scale}")
 
-ax.plot(x_vals, y_vals, linestyle='--', color='black')
+ax.axvline(x=1, color='gray', linestyle='--')
+ax.plot(x_vals, y_vals, linestyle='-', color='#1f77b4', linewidth=4, zorder=0)
+ax.set_yscale('log')
 ax.set_xscale('log')
 ax.set_xlabel("Batch Size / Noise Scale")
 ax.set_ylabel(fr"${{\epsilon_\text{{B}}}} / {{\epsilon_\text{{max}}}}$")
 ax.set_title("Predicted Training Speed")
 ax.legend()
-ax.grid(True)
 
-fig.savefig(os.path.join(save_dir, "lr_scaling_federated.png"))
+fig.savefig(os.path.join(save_dir, "lr_scaling_federated_local_batch_size.png"))
 
 plt.tight_layout()
 plt.show()
 
 
+###################################################### COHORT SIZE #####################################################
 
 
 time_per_round = 0.00427
@@ -206,31 +229,43 @@ for cohort_size in cohort_sizes:
 # Create first figure: Compute Budget vs Training Time
 fig, ax = plt.subplots(figsize=(10, 6))
 
-x_vals = []
-y_vals = []
-for cohort_size, params, hist in total_cohort_results:
-    times = []
-    samples = []
-    num_rounds = len(hist.metrics_distributed_fit['samples_processed'])
-    cumulative_time = num_rounds * time_per_round
+accuracy_thresholds = [0.4, 0.5, 0.6]
+for accuracy_threshold in accuracy_thresholds:
+    x_vals = []
+    y_vals = []
+    for cohort_size, params, hist in total_cohort_results:
+        times = []
+        samples = []
 
-    for round_idx, round_metrics in hist.metrics_distributed_fit['samples_processed']:
-        round_samples = [s for _, s in round_metrics['all']]
-        samples.append(np.sum(round_samples))
-    
-    total_samples = np.sum(samples)
-    x_vals.append(cumulative_time)
-    y_vals.append(total_samples)
-    ax.plot(cumulative_time, total_samples, marker='o', label=f"Cohort size: {cohort_size}")
+        num_rounds = len(hist.metrics_centralized['accuracy']) - 1
+        for round_idx, centralized_accuracy in hist.metrics_centralized['accuracy']:
+            if centralized_accuracy >= accuracy_threshold:
+                num_rounds = round_idx
+                break
 
-ax.plot(x_vals, y_vals, linestyle='--', color='black')
+        cumulative_time = num_rounds * time_per_round
+
+        for round_idx, round_metrics in hist.metrics_distributed_fit['samples_processed']:
+            if round_idx > num_rounds:
+                break
+            round_samples = [s for _, s in round_metrics['all']]
+            samples.append(np.sum(round_samples))
+        
+        total_samples = np.sum(samples)
+        x_vals.append(cumulative_time)
+        y_vals.append(total_samples)
+        ax.plot(cumulative_time, total_samples, marker='o', label=f"Cohort size: {cohort_size}, Accuracy threshold: {accuracy_threshold}")
+
+    ax.plot(x_vals, y_vals, linestyle='--', color='black')
+
+ax.set_yscale('log')
+ax.set_xscale('log')
 ax.set_xlabel("Total Training Time (s)")
 ax.set_ylabel("Compute Budget (Total Samples Processed)")
 ax.set_title("Compute Budget vs. Total Training Time")
 ax.legend()
-ax.grid(True)
 
-fig.savefig(os.path.join(save_dir, "compute_budget_federated.png"))
+fig.savefig(os.path.join(save_dir, "compute_budget_federated_cohort_size.png"))
 
 # Create second figure: Noise Scale Analysis
 fig, ax = plt.subplots(figsize=(10, 6))
@@ -252,26 +287,23 @@ for cohort_size, params, hist in total_cohort_results:
     
     ax.plot(x_axis, y_axis, marker='o', label=f"Cohort size: {cohort_size}")
 
-ax.plot(x_vals, y_vals, linestyle='--', color='black')
+ax.axvline(x=1, color='gray', linestyle='--')
+ax.plot(x_vals, y_vals, linestyle='-', color='#1f77b4', linewidth=4, zorder=0)
+ax.set_yscale('log')
+ax.set_xscale('log')
 ax.set_xlabel("Cohort Size / Noise Scale")
 ax.set_ylabel(fr"${{\epsilon_\text{{B}}}} / {{\epsilon_\text{{max}}}}$")
 ax.set_title("Predicted Training Speed")
 ax.legend()
-ax.grid(True)
 
-fig.savefig(os.path.join(save_dir, "noise_scale_cohort_federated.png"))
+fig.savefig(os.path.join(save_dir, "lr_scaling_federated_cohort_size.png"))
 
 plt.tight_layout()
 plt.show()
 
 
 
-
-
-
-
-
-
+###################################################### GLOBAL BATCH SIZE #####################################################
 
 
 # global batch size
@@ -287,31 +319,44 @@ for cohort_size, batch_size in cs_bs_pairs:
 # Create first figure: Compute Budget vs Training Time
 fig, ax = plt.subplots(figsize=(10, 6))
 
-x_vals = []
-y_vals = []
-for batch_size, params, hist in total_global_batch_results:
-    times = []
-    samples = []
-    num_rounds = len(hist.metrics_distributed_fit['samples_processed'])
-    cumulative_time = num_rounds * time_per_round
+accuracy_thresholds = [0.4, 0.5, 0.6]
+for accuracy_threshold in accuracy_thresholds:
+    x_vals = []
+    y_vals = []
+    for batch_size, params, hist in total_global_batch_results:
+        times = []
+        samples = []
+        
+        num_rounds = len(hist.metrics_centralized['accuracy']) - 1
+        for round_idx, centralized_accuracy in hist.metrics_centralized['accuracy']:
+            if centralized_accuracy >= accuracy_threshold:
+                num_rounds = round_idx
+                break
 
-    for round_idx, round_metrics in hist.metrics_distributed_fit['samples_processed']:
-        round_samples = [s for _, s in round_metrics['all']]
-        samples.append(np.sum(round_samples))
-    
-    total_samples = np.sum(samples)
-    x_vals.append(cumulative_time)
-    y_vals.append(total_samples)
-    ax.plot(cumulative_time, total_samples, marker='o', label=f"Global batch size: {batch_size}")
+        cumulative_time = num_rounds * time_per_round
 
-ax.plot(x_vals, y_vals, linestyle='--', color='black')
+        for round_idx, round_metrics in hist.metrics_distributed_fit['samples_processed']:
+            if round_idx > num_rounds:
+                break
+            round_samples = [s for _, s in round_metrics['all']]
+            samples.append(np.sum(round_samples))
+        
+        total_samples = np.sum(samples)
+        x_vals.append(cumulative_time)
+        y_vals.append(total_samples)
+        ax.plot(cumulative_time, total_samples, marker='o', 
+                label=f"Global batch size: {batch_size}, Acc threshold: {accuracy_threshold}")
+
+    ax.plot(x_vals, y_vals, linestyle='--', color='black')
+
+ax.set_yscale('log')
+ax.set_xscale('log')
 ax.set_xlabel("Total Training Time (s)")
 ax.set_ylabel("Compute Budget (Total Samples Processed)")
 ax.set_title("Compute Budget vs. Total Training Time")
 ax.legend()
-ax.grid(True)
 
-fig.savefig(os.path.join(save_dir, "compute_budget_global_batch_size.png"))
+fig.savefig(os.path.join(save_dir, "compute_budget_federated_global_batch_size.png"))
 
 # Create second figure: Noise Scale Analysis
 fig, ax = plt.subplots(figsize=(10, 6))
@@ -342,9 +387,8 @@ ax.set_yscale('log')
 ax.set_xscale('log')
 ax.set_title("Predicted Training Speed")
 ax.legend()
-#ax.grid(True)
 
-fig.savefig(os.path.join(save_dir, "lr_scaling_global_batch_size.png"))
+fig.savefig(os.path.join(save_dir, "lr_scaling_federated_global_batch_size.png"))
 
 plt.tight_layout()
 plt.show()
