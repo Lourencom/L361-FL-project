@@ -383,6 +383,7 @@ def sample_random_clients(
     filter_less: int,
     cid_client_generator: Callable[[str], FlowerClient],
     seed: int | None = Seeds.DEFAULT,
+    max_clients: int = 3229,
 ) -> Sequence[int]:
     """Sample randomly clients.
 
@@ -398,7 +399,7 @@ def sample_random_clients(
         random.seed(seed)
     list_of_ids = []
     while len(list_of_ids) < total_clients:
-        current_id = random.randint(0, 3229)
+        current_id = random.randint(0, max_clients)
         if (
             cid_client_generator(str(current_id)).get_train_set_size()
             > filter_less
@@ -523,6 +524,7 @@ def create_iid_partition(paths: dict, num_clients: int = 10, seed: int = 42):
     
     # Distribute data to clients
     for client_id in range(num_clients):
+        print(f"Distributing data to client {client_id}")
         client_dir = iid_dir / str(client_id)
         client_dir.mkdir(exist_ok=True)
         

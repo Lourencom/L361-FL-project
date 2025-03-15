@@ -319,7 +319,7 @@ for cohort_size, batch_size in cs_bs_pairs:
 # Create first figure: Compute Budget vs Training Time
 fig, ax = plt.subplots(figsize=(10, 6))
 
-accuracy_thresholds = [0.4, 0.5, 0.6]
+accuracy_thresholds = [0.4, 0.5, 0.6, 0.7]
 for accuracy_threshold in accuracy_thresholds:
     x_vals = []
     y_vals = []
