@@ -487,6 +487,11 @@ def create_iid_partition(paths: dict, num_clients: int = 10, seed: int = 42):
     """Create IID partition by randomly distributing data among clients."""
     import pandas as pd
     import numpy as np
+    import shutil
+    
+    # remove directory if it exists
+    if paths["iid_partition"].exists():
+        shutil.rmtree(paths["iid_partition"])
     
     # Create directory if it doesn't exist
     iid_dir = paths["iid_partition"]
