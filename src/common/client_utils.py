@@ -152,7 +152,6 @@ def train_femnist(
     net.train()
     running_loss, total = 0.0, 0
     total_time = 0.0
-    cnt = 0
     for _ in range(epochs):
         running_loss = 0.0
         total = 0
@@ -170,9 +169,10 @@ def train_femnist(
             optimizer.step()
             end_time = time.process_time()
             total_time += end_time - start_time
-            cnt += 1
     if return_total_time:
-        return running_loss / total, total_time / cnt
+        if total == 0:
+            return 0, total_time
+        return running_loss / total, total_time
     return running_loss / total
 
 
