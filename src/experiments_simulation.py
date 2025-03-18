@@ -78,30 +78,6 @@ def centralized_experiment(centralized_train_cfg, centralized_test_cfg, train_lo
             
             running_loss += loss.item() * data.size(0)
 
-            if batch_idx % val_epoch_interval == 0:
-                # Evaluate the trained model
-                model.eval()
-                correct, total = 0, 0
-                with torch.no_grad():
-                    for batch_idx, (data, target) in enumerate(train_loader):
-                        if "max_batches" in centralized_test_cfg and batch_idx >= centralized_test_cfg["max_batches"]:
-                            break
-                        data, target = data.to(device), target.to(device)
-                        output = model(data)
-                        preds = output.argmax(dim=1)
-                        correct += (preds == target).sum().item()
-                        total += target.size(0)
-
-                acc = correct / total
-
-                if acc > centralized_test_cfg["target_accuracy"]:
-                    log(INFO, "Epoch finished early, target accuracy reached")
-                    finished = True
-                    break
-            
-        if finished:
-            break
-
         
          # Evaluate the trained model
         model.eval()
