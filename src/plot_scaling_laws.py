@@ -50,10 +50,11 @@ def create_compute_budget_plot(total_results, save_dir, save_file, analysis_name
     for accuracy_threshold in accuracy_thresholds:
         x_vals = []
         y_vals = []
+
         for batch_size, params, hist in total_results:
             times = []
             samples = []
-            
+    
             num_rounds = len(hist.metrics_centralized['accuracy']) - 1
             for round_idx, centralized_accuracy in hist.metrics_centralized['accuracy']:
                 if centralized_accuracy >= accuracy_threshold:
@@ -67,10 +68,15 @@ def create_compute_budget_plot(total_results, save_dir, save_file, analysis_name
                     round_times = [t for _, t in round_metrics['all']]
                     times.append(np.mean(round_times))
                 cumulative_time = np.sum(times)
+
             elif mode == "2":
                 assert universal_round_time is not None, "Universal round time must be provided for mode 2"
                 cumulative_time = universal_round_time * num_rounds
 
+            elif mode == "3":
+                assert isinstance(universal_round_time, dict), "Universal round time should be a dict for mode 3"
+                cumulative_time = num_rounds * universal_round_time[batch_size]
+                
                 
             for round_idx, round_metrics in hist.metrics_distributed_fit['samples_processed']:
                 if round_idx > num_rounds:
@@ -121,9 +127,6 @@ def create_compute_budget_plot_centralized(centralized_experiment_results, save_
             y_vals.append(compute_budget)
             ax.plot(cumulative_time, compute_budget, marker='o', color=color)
             
-            print(f"Batch size: {batch_size}, Acc threshold: {accuracy_threshold}")
-            print(f"Total Training Time (s): {cumulative_time}")
-            print(f"Compute Budget (samples): {compute_budget}")
         
         ax.plot(x_vals, y_vals, linestyle='--', color=color, label=f"Accuracy threshold: {accuracy_threshold}")
 
@@ -164,7 +167,7 @@ def main():
     save_dir = os.path.join(project_root, "plots", "centralized")
     os.makedirs(save_dir, exist_ok=True)
 
-    centralized_experiment_batch_sizes = [16, 32, 64, 128, 256, 512, 1024]
+    centralized_experiment_batch_sizes = [32, 64, 128, 256, 512]
     centralized_experiment_results = [
         (batch_size, load_experiment(os.path.join(project_root, "results", "centralized", f"centralized_experiment_results_{batch_size}.json")))
         for batch_size in centralized_experiment_batch_sizes
@@ -202,14 +205,27 @@ def main():
     os.makedirs(save_dir, exist_ok=True)
 
     experiment_batch_sizes = [16, 32, 64, 128, 256]
-    time_per_round = 0.00427
 
+    times_per_round = {
+        16: 0.3243857210002261,
+        32: 0.3399281270000074,
+        64: 0.3267664940001396,
+        128: 0.33573683999969717,
+        256: 0.3428499029998875
+        }
+
+    times_per_round = {16: 0.004624289949995841,
+        32: 0.003913936962501907,
+        64: 0.00422577374286074,
+        128: 0.004699526712501978,
+        256: 0.004757751000002892}
     ################################# NON-IID #################################
     
     total_batch_results = []
     for batch_size in experiment_batch_sizes:
         save_file_name = os.path.join(project_root, "results", f"federated_batch_results_{batch_size}.pkl")
         total_batch_results.append(load_experiment_pickle(save_file_name))
+
 
     create_compute_budget_plot(
         total_results=total_batch_results,
@@ -218,8 +234,8 @@ def main():
         analysis_name="Local Batch Size",
         accuracy_thresholds=accuracy_thresholds,
         accuracy_colors=accuracy_colors,
-        mode="2",
-        universal_round_time=time_per_round,
+        mode="1",
+        universal_round_time=times_per_round,
     )
 
 
@@ -229,6 +245,7 @@ def main():
     for batch_size in experiment_batch_sizes:
         save_file_name = os.path.join(project_root, "results", f"IID_federated_local_batch_results_{batch_size}.pkl")
         total_batch_results.append(load_experiment_pickle(save_file_name))
+    
 
     create_compute_budget_plot(
         total_results=total_batch_results,
@@ -237,14 +254,16 @@ def main():
         analysis_name="Local Batch Size",
         accuracy_thresholds=accuracy_thresholds,
         accuracy_colors=accuracy_colors,
-        mode="2",
-        universal_round_time=time_per_round,
+        mode="1",
+        universal_round_time=times_per_round,
     )
 
 
 
     ###################################################### COHORT SIZE #####################################################
 
+
+    time_per_round = 0.00427
     cohort_sizes =  [5, 10, 20, 50, 75, 100]
 
     ################################# NON-IID #################################
@@ -281,7 +300,6 @@ def main():
         mode="2",
         universal_round_time=time_per_round,
     )
-
 
 
     ###################################################### GLOBAL BATCH SIZE #####################################################
