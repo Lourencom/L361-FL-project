@@ -301,7 +301,6 @@ def main():
         universal_round_time=time_per_round,
     )
 
-
     ###################################################### GLOBAL BATCH SIZE #####################################################
 
     cs_bs_pairs = [(5, 20), (20, 50), (50, 200), (100, 250), (100, 1000), (100, 2000), (100, 4000), (100, 12000)]
@@ -332,13 +331,12 @@ def main():
         avg_noise_scale=108600.0 # from critical bs plot
     )
 
-
-
     ################################# IID ##########################################
+    save_dir = os.path.join(project_root, "plots", "federated")
     total_global_batch_results = []
     for cohort_size, batch_size in cs_bs_pairs:
         global_batch_size = cohort_size * batch_size
-        total_global_batch_results.append(load_experiment_pickle(f"results/IID_federated_global_batch_results_{global_batch_size}.pkl"))
+        total_global_batch_results.append(load_experiment_pickle(os.path.join(project_root, "results", f"IID_federated_global_batch_results_{global_batch_size}.pkl")))
 
     create_compute_budget_plot(
         total_results=total_global_batch_results,
@@ -356,7 +354,7 @@ def main():
         save_dir=save_dir,
         save_file="iid_lr_scaling_federated_global_batch_size.png",
         analysis_name="Global Batch Size",
-        avg_noise_scale=10000000000000000 # IDK this yet
+        avg_noise_scale=191093
     )
 
 

@@ -164,7 +164,7 @@ class FlowerRayClient(flwr.client.NumPyClient):
         }
 
          # join metrics dict and G_local_dict
-        if False:
+        if config.get("return_params", False):
             return_dict = {**metrics_dict, **G_local_dict}
             return get_model_parameters(net), len(train_loader), return_dict
         else:

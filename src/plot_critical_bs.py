@@ -17,6 +17,8 @@ std_t = [np.std([B_simples[run][i] for run in range(len(B_simples)) if i < len(B
 mean_t = np.array(mean_t)
 
 print(np.mean(mean_t)) # 108600
+
+print(np.mean(std_t))
 std_t = np.array(std_t)
 
 fig, ax = plt.subplots(figsize=(10, 5))
@@ -24,10 +26,43 @@ ax.plot(mean_t, color='darkblue')
 ax.fill_between(range(rounds), mean_t - std_t, mean_t + std_t, color='lightblue', alpha=0.5)
 ax.set_xlabel('Rounds')
 ax.set_ylabel('Estimation of Critical batch size')
-ax.set_title('Estimation of Critical batch size for each round')
+ax.set_title(f'Estimation of Critical batch size for each round (mean = {np.mean(mean_t):.0f}, std = {np.mean(std_t):.0f})')
 plt.show()
 out_dir = os.path.join(os.getcwd(), 'plots')
 os.makedirs(out_dir, exist_ok=True)
 fig.savefig(os.path.join(out_dir, 'critical_bs_estimation.png'), dpi=300)
 
+
+
+# plot the critical bs estimation for iid
+
+B_simples = [[-18407.686925566362, -13762.505288528548, -29665.108319094634, -12927.35371816805, 4372.760959719874, 10805.953609141283, -21040.561981702886, 23238.6966912209, -20496.066521615783, 40973.22031090615], [-40754.83941407597, -94828.01133622219, -168606.6061223791, -13053.941180392021, -12196.393251686653, 139131.94393159807, -18836.993638551605, 14911.932928595123, 71887.69261004392, -429673.47555676906], [-50326.972540666844, -221078.50863027747, -12331.574093571728, -10559.19947656049, -533488.2914706912, 72097.91998244265, 2756775.10465039, -37545.04286075924, -215591.0786897387, -124943.4867790073], [-86654.8377399388, 70070.96612662714, 869667.1183916295, 62085.1567899368, 47205.20980176431, -64801.69123063742, 59619.394715874994, 43996.21136494777, 76026.20309461898, 370612.13195318024], [-37359.721294111616, -179548.41406089318, -266947.3063659719, -956503.1802564623, 272930.986020992, -264428.3445225671, 100874.68615423376, -94089.052502197, -138475.6462939103, -258445.3923542993]]
+B_simples = [[abs(el) for el in subl] for subl in B_simples]
+# apply median filter for each sublist
+B_simple_median = [medfilt(subl, 5) for subl in B_simples]
+
+rounds = 10
+
+mean_t = [np.mean([B_simples[run][i] for run in range(len(B_simples)) if i < len(B_simples[run])]) for i in range(rounds)]
+std_t = [np.std([B_simples[run][i] for run in range(len(B_simples)) if i < len(B_simples[run])]) for i in range(rounds)]
+
+mean_t = np.array(mean_t)
+
+print(np.mean(mean_t)) # 191000
+std_t = np.array(std_t)
+print(np.mean(std_t)) 
+
+fig, ax = plt.subplots(figsize=(10, 5))
+ax.plot(mean_t, color='darkblue')
+ax.fill_between(range(rounds), mean_t - std_t, mean_t + std_t, color='lightblue', alpha=0.5)
+ax.set_xlabel('Rounds')
+ax.set_ylabel('Estimation of Critical batch size')
+ax.set_title(f'Estimation of Critical batch size for each round (mean = {np.mean(mean_t):.0f}, std = {np.mean(std_t):.0f})')
+# set log y scale
+
+
+plt.show()
+out_dir = os.path.join(os.getcwd(), 'plots')
+os.makedirs(out_dir, exist_ok=True)
+fig.savefig(os.path.join(out_dir, 'critical_bs_estimation_iid.png'), dpi=300)
 
