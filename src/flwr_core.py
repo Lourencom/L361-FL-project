@@ -489,9 +489,15 @@ def create_iid_partition(paths: dict, num_clients: int = 10, seed: int = 42):
     import numpy as np
     import shutil
     
-    # remove directory if it exists
+    # remove directory if it exists and has num_clients clients
     if paths["iid_partition"].exists():
-        shutil.rmtree(paths["iid_partition"])
+        curr_num_clients = len(list(paths["iid_partition"].iterdir()))
+        print(f"Current number of clients in iid partition: {curr_num_clients}, expected: {num_clients}")
+        if curr_num_clients == num_clients:
+            print("IID partition already exists and has the correct number of clients")
+            return
+        else:
+            shutil.rmtree(paths["iid_partition"])
     
     # Create directory if it doesn't exist
     iid_dir = paths["iid_partition"]
